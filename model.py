@@ -1,11 +1,12 @@
 from intefaces import IModel
 import json
 import math
+import time
 from numbs_aux import generate_numbers, test_numbers
 from data_models import *
 from intefaces import IPresenter
 
-GAMES_AMOUNT = 10000
+GAMES_AMOUNT = 20000
 PLAYERS_PER_TEAM = 5
 ROUNDS_PER_GAME = 10
 
@@ -22,13 +23,22 @@ class Model(IModel):
         self.presenter: IPresenter = presenter
 
     def start_simulation(self):
+        # Iniciar medición de tiempo
+        start_time = time.time()
+        
         self.generate_sim_numbers()
         self.teams : list[Team] = self.generate_teams()
         self.players : list[Player] = []
         for team in self.teams:
             for i in range(PLAYERS_PER_TEAM):
                 self.players.append(self.generate_player(team, f"Jugador {i+1} {team.name}"))
+        
+        # Tiempo después de generar números y jugadores
+        setup_time = time.time() - start_time
+        
         self.games : list[Game] = []
+        games_start_time = time.time()
+        
         for i in range(GAMES_AMOUNT):
             rounds : list[Round] = []
             for j in range(ROUNDS_PER_GAME):
@@ -38,19 +48,45 @@ class Model(IModel):
                 rounds.append(Round(j+1,shots, luck_values, endurance_values, winner_player, winner_team))
             winner_player, winner_team, luckiest_player = self.calculate_game_winner(rounds)
             self.games.append(Game(i+1, rounds, winner_team, winner_player, luckiest_player))
+        
+        # Tiempo de generación de juegos
+        games_generation_time = time.time() - games_start_time
+        
+        # Calcular resultados
+        analysis_start_time = time.time()
+        
         luckiest_player_per_game = self.calculate_luckiest_player_per_games()
         more_experienced_player = self.calculate_more_experienced_player()
         winner_team_total = self.calculate_team_winner()
         winner_gender_per_game = self.calculate_winner_gender_per_game()
         winner_gender_total = self.calculate_winner_gender_total()
         points_vs_games_per_player = self.calculate_points_vs_games_per_player()
+        team_score_distribution = self.calculate_team_score_distribution()
+        special_shots_analysis = self.calculate_special_shots_analysis()
+        tied_rounds_analysis = self.calculate_tied_rounds_analysis()
+        
+        # Tiempo de análisis
+        analysis_time = time.time() - analysis_start_time
+        
+        # Tiempo total
+        total_time = time.time() - start_time
+        
+        # Calcular métricas de eficiencia
+        efficiency_metrics = self.calculate_efficiency_metrics(
+            total_time, setup_time, games_generation_time, analysis_time
+        )
+        
         results = {
             "luckiest_player_per_game": luckiest_player_per_game,
             "more_experienced_player": more_experienced_player,
             "winner_team_total": winner_team_total,
             "winner_gender_per_game": winner_gender_per_game,
             "winner_gender_total": winner_gender_total,
-            "points_vs_games_per_player": points_vs_games_per_player
+            "points_vs_games_per_player": points_vs_games_per_player,
+            "team_score_distribution": team_score_distribution,
+            "special_shots_analysis": special_shots_analysis,
+            "tied_rounds_analysis": tied_rounds_analysis,
+            "efficiency_metrics": efficiency_metrics
         }
         self.presenter.show_results(results)
 
@@ -96,6 +132,12 @@ class Model(IModel):
         """Genera número aleatorio con distribución normal usando Box-Muller"""
         u1 = self.get_pseudorandom_number()
         u2 = self.get_pseudorandom_number()
+        
+        # Proteger contra valores extremos que causarían error de dominio
+        # Asegurar que u1 esté en el rango (0, 1) excluyendo los extremos
+        u1 = max(1e-10, min(1 - 1e-10, u1))
+        u2 = max(1e-10, min(1 - 1e-10, u2))
+        
         # Box-Muller transform
         z0 = (-2 * math.log(u1))**0.5 * math.cos(2 * math.pi * u2)
         return mu + sigma * z0
@@ -360,6 +402,180 @@ class Model(IModel):
                 player_name = player_points["player"].name
                 player_points["points"].append(game_points.get(player_name, 0))
         return players_with_points
+
+    def calculate_team_score_distribution(self):
+        """Calcula distribución de puntajes promedio por equipo con análisis de dispersión"""
+        team_a_scores = []
+        team_b_scores = []
+        
+        for game in self.games:
+            team_a_game_score = 0
+            team_b_game_score = 0
+            
+            for round_game in game.rounds:
+                for shot in round_game.shots:
+                    if shot.player.team.name == "Team A" and shot.type in ["NS", "LS", "AS"]:
+                        team_a_game_score += shot.score
+                    elif shot.player.team.name == "Team B" and shot.type in ["NS", "LS", "AS"]:
+                        team_b_game_score += shot.score
+            
+            team_a_scores.append(team_a_game_score)
+            team_b_scores.append(team_b_game_score)
+        
+        # Cálculos estadísticos
+        team_a_avg = sum(team_a_scores) / len(team_a_scores)
+        team_b_avg = sum(team_b_scores) / len(team_b_scores)
+        
+        # Varianza y desviación estándar
+        team_a_variance = sum((score - team_a_avg) ** 2 for score in team_a_scores) / len(team_a_scores)
+        team_b_variance = sum((score - team_b_avg) ** 2 for score in team_b_scores) / len(team_b_scores)
+        
+        team_a_std = team_a_variance ** 0.5
+        team_b_std = team_b_variance ** 0.5
+        
+        return {
+            "team_a": {
+                "name": "Team A",
+                "average_score": round(team_a_avg, 2),
+                "variance": round(team_a_variance, 2),
+                "std_deviation": round(team_a_std, 2),
+                "scores": team_a_scores
+            },
+            "team_b": {
+                "name": "Team B", 
+                "average_score": round(team_b_avg, 2),
+                "variance": round(team_b_variance, 2),
+                "std_deviation": round(team_b_std, 2),
+                "scores": team_b_scores
+            }
+        }
+
+    def calculate_special_shots_analysis(self):
+        """Calcula promedio de lanzamientos especiales por equipo y correlación con experiencia"""
+        team_a_special_shots = 0
+        team_b_special_shots = 0
+        
+        # Contar lanzamientos especiales por equipo
+        for game in self.games:
+            for round_game in game.rounds:
+                for shot in round_game.shots:
+                    if shot.type in ["LS", "AS"]:  # Lanzamientos especiales
+                        if shot.player.team.name == "Team A":
+                            team_a_special_shots += 1
+                        else:
+                            team_b_special_shots += 1
+        
+        # Promedios por juego
+        team_a_avg_special = team_a_special_shots / GAMES_AMOUNT
+        team_b_avg_special = team_b_special_shots / GAMES_AMOUNT
+        
+        # Calcular experiencia ganada por equipo
+        team_a_players = [p for p in self.players if p.team.name == "Team A"]
+        team_b_players = [p for p in self.players if p.team.name == "Team B"]
+        
+        team_a_experience_gained = sum(p.experience - 10 for p in team_a_players)  # 10 es la experiencia inicial
+        team_b_experience_gained = sum(p.experience - 10 for p in team_b_players)
+        
+        # Correlación simple (lanzamientos especiales vs experiencia ganada)
+        correlation_a = team_a_special_shots * team_a_experience_gained if team_a_experience_gained > 0 else 0
+        correlation_b = team_b_special_shots * team_b_experience_gained if team_b_experience_gained > 0 else 0
+        
+        return {
+            "team_a": {
+                "name": "Team A",
+                "total_special_shots": team_a_special_shots,
+                "avg_special_shots_per_game": round(team_a_avg_special, 2),
+                "experience_gained": team_a_experience_gained,
+                "correlation_factor": round(correlation_a / 1000, 2)  # Factor normalizado
+            },
+            "team_b": {
+                "name": "Team B",
+                "total_special_shots": team_b_special_shots,
+                "avg_special_shots_per_game": round(team_b_avg_special, 2),
+                "experience_gained": team_b_experience_gained,
+                "correlation_factor": round(correlation_b / 1000, 2)  # Factor normalizado
+            }
+        }
+
+    def calculate_tied_rounds_analysis(self):
+        """Calcula número de rondas empatadas y frecuencia relativa"""
+        tied_rounds_count = 0
+        total_rounds = GAMES_AMOUNT * ROUNDS_PER_GAME
+        
+        for game in self.games:
+            for round_game in game.rounds:
+                if round_game.winner_team is None:  # Ronda empatada
+                    tied_rounds_count += 1
+        
+        tied_frequency = (tied_rounds_count / total_rounds) * 100
+        
+        return {
+            "tied_rounds_count": tied_rounds_count,
+            "total_rounds": total_rounds,
+            "tied_frequency_percent": round(tied_frequency, 2),
+            "non_tied_rounds": total_rounds - tied_rounds_count,
+            "non_tied_frequency_percent": round(100 - tied_frequency, 2)
+        }
+    
+    def calculate_efficiency_metrics(self, total_time, setup_time, games_generation_time, analysis_time):
+        """Calcula métricas de eficiencia del sistema"""
+        # Calcular totales de elementos procesados
+        total_shots = sum(len(round.shots) for game in self.games for round in game.rounds)
+        total_rounds = len(self.games) * ROUNDS_PER_GAME
+        total_luck_calculations = total_rounds * 2  # 2 por ronda (uno por equipo)
+        
+        # Velocidades de procesamiento
+        games_per_second = GAMES_AMOUNT / games_generation_time if games_generation_time > 0 else 0
+        rounds_per_second = total_rounds / games_generation_time if games_generation_time > 0 else 0
+        shots_per_second = total_shots / games_generation_time if games_generation_time > 0 else 0
+        
+        # Distribución de tiempo
+        setup_percentage = (setup_time / total_time) * 100
+        games_percentage = (games_generation_time / total_time) * 100
+        analysis_percentage = (analysis_time / total_time) * 100
+        
+        # Eficiencia de memoria (aproximada)
+        memory_efficiency = {
+            "total_games_stored": len(self.games),
+            "total_rounds_stored": total_rounds,
+            "total_shots_stored": total_shots,
+            "average_shots_per_round": total_shots / total_rounds if total_rounds > 0 else 0
+        }
+        
+        return {
+            "timing": {
+                "total_time_seconds": round(total_time, 3),
+                "total_time_minutes": round(total_time / 60, 2),
+                "setup_time_seconds": round(setup_time, 3),
+                "games_generation_time_seconds": round(games_generation_time, 3),
+                "analysis_time_seconds": round(analysis_time, 3)
+            },
+            "time_distribution": {
+                "setup_percentage": round(setup_percentage, 2),
+                "games_generation_percentage": round(games_percentage, 2),
+                "analysis_percentage": round(analysis_percentage, 2)
+            },
+            "processing_rates": {
+                "games_per_second": round(games_per_second, 2),
+                "rounds_per_second": round(rounds_per_second, 2),
+                "shots_per_second": round(shots_per_second, 2),
+                "luck_calculations_per_second": round(total_luck_calculations / games_generation_time, 2) if games_generation_time > 0 else 0
+            },
+            "data_volume": {
+                "total_games": GAMES_AMOUNT,
+                "total_rounds": total_rounds,
+                "total_shots": total_shots,
+                "total_luck_calculations": total_luck_calculations,
+                "average_shots_per_game": round(total_shots / GAMES_AMOUNT, 2),
+                "average_shots_per_round": round(total_shots / total_rounds, 2)
+            },
+            "memory_efficiency": memory_efficiency,
+            "system_performance": {
+                "throughput_score": round((total_shots + total_luck_calculations) / total_time, 2),
+                "efficiency_ratio": round(games_generation_time / total_time, 3),
+                "processing_intensity": "High" if shots_per_second > 1000 else "Medium" if shots_per_second > 100 else "Low"
+            }
+        }
     
     def get_pseudorandom_number(self):
         number = self.numbers[self.current_number]
