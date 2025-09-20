@@ -1,9 +1,7 @@
-from intefaces import IPresenter, IModel, IView
-
-class Presenter(IPresenter):
-    def __init__(self, model: IModel, view: IView):
-        self.model: IModel = model
-        self.view: IView = view
+class Presenter:
+    def __init__(self, model, view):
+        self.model = model
+        self.view = view
         self.model.set_presenter(self)
         self.view.set_presenter(self)
 

@@ -1,16 +1,14 @@
-from intefaces import IModel
 import json
 import math
 import time
 from numbs_aux import generate_numbers, test_numbers
 from data_models import *
-from intefaces import IPresenter
 
-GAMES_AMOUNT = 20000
+GAMES_AMOUNT = 10000
 PLAYERS_PER_TEAM = 5
 ROUNDS_PER_GAME = 10
 
-class Model(IModel):
+class Model:
     def __init__(self):
         self.nums_configurations = []
         self.nums_index = 0
@@ -20,7 +18,7 @@ class Model(IModel):
         self.load_index()
 
     def set_presenter(self, presenter):
-        self.presenter: IPresenter = presenter
+        self.presenter = presenter
 
     def start_simulation(self):
         # Iniciar medición de tiempo

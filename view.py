@@ -1,69 +1,197 @@
-from intefaces import IView, IPresenter, IModel
 from model import Model
 from presenter import Presenter
 import tkinter as tk
+from tkinter import ttk
 import threading
 import matplotlib.pyplot as plt
 
-class LoadingCircle:
+class LoadingBar:
+    """Barra de progreso centrada y más grande. Maneja estilos de ttk de forma robusta."""
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.canvas = tk.Canvas(root, width=100, height=100)
-        self.canvas.pack(expand=True, fill=tk.BOTH, pady=20)
-        self.arc = None
-        self.angle = 0
-        self.canvas.bind("<Configure>", self.update_arc_position)
-        self.animate()
 
-    def update_arc_position(self, event=None):
-        canvas_width = self.canvas.winfo_width()
-        canvas_height = self.canvas.winfo_height()
-        size = 0.8 * min(canvas_width, canvas_height)
-        x0 = (canvas_width - size) / 2
-        y0 = (canvas_height - size) / 2
-        x1 = x0 + size
-        y1 = y0 + size
-        if self.arc:
-            self.canvas.delete(self.arc)
-        self.arc = self.canvas.create_arc(
-            x0, y0, x1, y1,
-            start=self.angle,
-            extent=210,
-            style=tk.ARC,
-            outline="#3498db",
-            width=min(canvas_width, canvas_height)*0.1
-        )
+        # Contenedor (ocupamos toda la zona para poder centrar con place)
+        self.container = tk.Frame(root, bg=root.cget("bg"))
+        self.container.pack(fill=tk.BOTH, expand=True)
 
-    def animate(self):
-        self.angle = (self.angle + 10) % 360
-        self.canvas.itemconfig(self.arc, start=self.angle)
-        def update():
-            if self.root.winfo_exists():
-                try:
-                    self.animate()
-                except tk.TclError:
-                    pass
-        self.root.after(50, update)
+        # Intentamos crear un estilo "LargeHorizontal.TProgressbar" basado en el layout
+        # del estilo Horizontal.TProgressbar. Hacemos esto de forma robusta para evitar
+        # errores en plataformas/temas donde no exista el layout personalizado.
+        try:
+            style = ttk.Style()
 
-class View(tk.Tk, IView):
+            # obtenemos el layout base (esto no lanza si el estilo existe)
+            base_layout = style.layout('Horizontal.TProgressbar')
+
+            # clonamos el layout para el nuevo estilo y configuramos grosor
+            style.layout('LargeHorizontal.TProgressbar', base_layout)
+            style.configure('LargeHorizontal.TProgressbar', thickness=14)
+            pb_style = 'LargeHorizontal.TProgressbar'
+        except Exception:
+            # fallback: intentamos simplemente configurar el estilo horizontal existente
+            try:
+                style = ttk.Style()
+                style.configure('Horizontal.TProgressbar', thickness=14)
+                pb_style = 'Horizontal.TProgressbar'
+            except Exception:
+                # último recurso: usar el estilo por defecto
+                pb_style = 'TProgressbar'
+
+        # Barra de progreso horizontal más ancha
+        # la colocamos dentro de un frame pequeño que centraremos con place
+        self.inner = tk.Frame(self.container, bg=self.container.cget("bg"))
+        # Usamos place para centrar exactamente
+        self.inner.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Progressbar: longitud mayor (600)
+        self.progress = ttk.Progressbar(self.inner, orient="horizontal",
+                                        mode="indeterminate", length=600,
+                                        style=pb_style)
+        self.progress.pack(pady=6)
+
+        # indicador numérico pequeño (opcional) - vacío por defecto
+        self.info = tk.Label(self.inner, text="", font=("Arial", 10), bg=self.container.cget("bg"))
+        self.info.pack()
+
+        self._determinate = False
+        self._value = 0
+
+    def start_indeterminate(self):
+        try:
+            self.progress.config(mode="indeterminate")
+            self.progress.start(10)  # 10 ms para animación suave
+            self._determinate = False
+        except Exception:
+            pass
+
+    def start_determinate(self, maximum=100):
+        try:
+            self.progress.stop()
+            self.progress.config(mode="determinate", maximum=maximum, value=0)
+            self._determinate = True
+            self._value = 0
+        except Exception:
+            pass
+
+    def set_progress(self, pct: int):
+        """Permite al presenter actualizar progreso (0-100). Cambia a determinate si es necesario."""
+        pct = max(0, min(100, int(pct)))
+        if not self._determinate:
+            # pasar a modo determinate la primera vez que se recibe un valor concreto
+            self.start_determinate(100)
+        try:
+            self.progress['value'] = pct
+            self._value = pct
+            self.info.config(text=f"{pct}%")
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
+    def stop(self):
+        try:
+            if not self._determinate:
+                self.progress.stop()
+            self.progress['value'] = 100
+            self.info.config(text="Completado")
+        except Exception:
+            pass
+
+    def destroy(self):
+        try:
+            self.container.destroy()
+        except Exception:
+            pass
+
+
+class View(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.presenter : IPresenter = None
+        self.presenter = None
         self.load_frame = None
+        self.loading_bar = None
+
+        # --- QUITAR BARRA NATIVA ---
+        # Esto elimina la barra de título con botones nativos.
+        self.overrideredirect(True)
+
         self.title("Simulador de Juegos de Arquería")
         self.geometry("1000x700")
         self.configure(bg="#f0f0f0")
         self.update_idletasks()
         self.geometry("+{}+{}".format(int(self.winfo_screenwidth()/2 - self.winfo_width()/2), int(self.winfo_screenheight()/2 - self.winfo_height()/2)))
-        self.main_frame = tk.Frame(self)
+
+        # MAIN FRAME
+        self.main_frame = tk.Frame(self, bg=self.cget("bg"))
         self.main_frame.pack(fill=tk.BOTH, expand=True)
-        self.label = tk.Label(self.main_frame, text="Simulador de juegos de arqueria")
+
+        # Permitir mover la ventana arrastrando el main_frame (porque perdimos la barra)
+        self._drag_offset_x = 0
+        self._drag_offset_y = 0
+        def _start_move(event):
+            try:
+                self._drag_offset_x = event.x_root - self.winfo_x()
+                self._drag_offset_y = event.y_root - self.winfo_y()
+            except Exception:
+                pass
+        def _do_move(event):
+            try:
+                new_x = event.x_root - self._drag_offset_x
+                new_y = event.y_root - self._drag_offset_y
+                self.geometry(f"+{new_x}+{new_y}")
+            except Exception:
+                pass
+        # enlazamos al main_frame para arrastrar desde cualquier sitio dentro de la UI principal
+        self.main_frame.bind("<ButtonPress-1>", _start_move)
+        self.main_frame.bind("<B1-Motion>", _do_move)
+
+        # Atajo para cerrar la ventana (Escape)
+        self.bind("<Escape>", lambda e: self.destroy())
+
+        # Título (arriba)
+        self.label = tk.Label(self.main_frame, text="Simulador de juegos de arqueria", bg=self.cget("bg"))
         self.label.config(font=("Arial", 20))
-        self.label.pack(pady=10)
+        self.label.pack(pady=(40, 20))
+
+        # Contenedor para centrar el botón (lo centra horizontal y verticalmente dentro de main_frame)
+        button_container = tk.Frame(self.main_frame, bg=self.cget("bg"))
+        button_container.pack(expand=True)
+
         def on_start():
             self.show_load_frame()
+            # Lanza start_simulation en hilo para no bloquear UI.
             threading.Thread(target=self.presenter.start_simulation, daemon=True).start()
-        tk.Button(self.main_frame, text="Iniciar Simulación", command=on_start).pack(pady=10)
+
+        # Botón grande, coloreado y centrado
+        self.start_btn = tk.Button(
+            button_container,
+            text="Iniciar Simulación",
+            command=on_start,
+            font=("Arial", 16, "bold"),
+            width=24,           # ancho en caracteres
+            height=2,           # alto en líneas
+            bg="#2ecc71",       # color verde (puedes cambiar)
+            fg="white",         # texto blanco
+            activebackground="#27ae60",
+            activeforeground="white",
+            bd=0,
+            relief=tk.RAISED,
+            cursor="hand2"
+        )
+        self.start_btn.pack(pady=20)
+
+        # Efecto hover (cambia ligeramente el color al pasar el ratón)
+        def _on_enter(e):
+            try:
+                e.widget.config(bg="#27ae60")
+            except Exception:
+                pass
+        def _on_leave(e):
+            try:
+                e.widget.config(bg="#2ecc71")
+            except Exception:
+                pass
+        self.start_btn.bind("<Enter>", _on_enter)
+        self.start_btn.bind("<Leave>", _on_leave)
 
     def show_load_frame(self):
         self.main_frame.pack_forget()
@@ -71,16 +199,42 @@ class View(tk.Tk, IView):
         self.load_frame.pack(fill=tk.BOTH, expand=True)
 
     def create_load_frame(self):
-        self.load_frame = tk.Frame(self)
+        # reemplazamos LoadingCircle por LoadingBar horizontal centrada y más ancha
+        self.load_frame = tk.Frame(self, bg=self.cget("bg"))
         self.load_frame.pack(fill=tk.BOTH, expand=True)
-        LoadingCircle(self.load_frame)
-        self.load_label = tk.Label(self.load_frame, text="Cargando simulacion...")
-        self.load_label.config(font=("Arial", 20))
-        self.load_label.pack(fill=tk.X, expand=True)
+        self.loading_bar = LoadingBar(self.load_frame)
+        # por defecto arrancamos en modo indeterminate (animada)
+        self.loading_bar.start_indeterminate()
+        # no mostramos texto "Cargando simulacion"
 
     def set_presenter(self, presenter):
         self.presenter = presenter
 
+    # Método opcional para que el presenter actualice progreso: view.set_loading_progress(pct)
+    def set_loading_progress(self, pct: int):
+        if self.loading_bar:
+            # aseguramos ejecución en hilo UI
+            try:
+                self.after(0, lambda: self.loading_bar.set_progress(pct))
+            except Exception:
+                pass
+
+    # Método opcional que el presenter puede llamar cuando termina la simulación
+    def simulation_finished(self, results: dict):
+        # detener barra y mostrar resultados
+        if self.loading_bar:
+            try:
+                self.loading_bar.stop()
+            except Exception:
+                pass
+        # mostrar resultados en hilo principal (tu show_results espera un dict llamado results)
+        try:
+            self.after(50, lambda: self.show_results(results))
+        except Exception:
+            # fallback directo
+            self.show_results(results)
+
+    # --- show_results (mantengo tu implementación completa) ---
     def show_results(self, results):
         results_frame = tk.Frame(self)
         canvas = tk.Canvas(results_frame)
@@ -127,7 +281,6 @@ class View(tk.Tk, IView):
         for player_points in results['winner_team_total']['player_points']:
             tk.Label(team_frame, text=f"• {player_points['player']} - {player_points['points']} puntos", 
                      font=("Arial", 11)).pack(pady=2)
-
         # Distribución de puntajes por equipo
         distribution_frame = tk.LabelFrame(scrollable_frame, text="Distribución de Puntajes por Equipo", font=("Arial", 14, "bold"))
         distribution_frame.pack(fill=tk.X, padx=10, pady=10)
@@ -330,10 +483,18 @@ class View(tk.Tk, IView):
             results_frame.destroy()
         
         tk.Button(results_frame, text="Volver", command=on_back).pack(pady=10)
-        self.load_frame.pack_forget()
+        # ocultar y destruir load_frame si existe
+        try:
+            if self.load_frame:
+                self.load_frame.pack_forget()
+                self.load_frame.destroy()
+                self.load_frame = None
+                self.loading_bar = None
+        except Exception:
+            pass
+
         results_frame.pack(fill=tk.BOTH, expand=True)
-        self.load_frame.destroy()
-    
+
     def reset_view(self, frame: tk.Frame):
         frame.pack_forget()
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -508,7 +669,7 @@ class View(tk.Tk, IView):
         return result
 
 if __name__ == "__main__":
-    model: IModel = Model()
-    view: IView = View()
+    model = Model()
+    view = View()
     presenter = Presenter(model, view)
     view.mainloop()
