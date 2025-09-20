@@ -1,7 +1,6 @@
+# Montecarlo Simulation
 
-# Montecarlo simulation
-
-Montecarlo archery simulation.
+Montecarlo archery simulation built with Python, Tkinter and Matplotlib.
 
 
 ## Run Locally
@@ -9,36 +8,16 @@ Montecarlo archery simulation.
 Clone the project
 
 ```bash
-  git clone https://github.com/HarDep/montecarlo-sim.git
-```
+  git clone https://github.com/crepepesote/Montecarlo.git
 
-Go to the project directory
 
-```bash
-  cd montecarlo-sim
-```
+cd Montecarlo
 
-Create env
 
-```bash
-  python -m venv .venv
-```
+python -m venv .venv
 
-Use the env
+source .venv/bin/activate
 
-```bash
-  source .venv/bin/activate
-```
+pip install matplotlib numpy pandas scipy
 
-Install dependencies
-
-```bash
-  pip install -r requirements.txt
-```
-
-Start the program
-
-```bash
-  python view.py
-```
-
+python view.py
