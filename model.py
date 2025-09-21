@@ -58,14 +58,14 @@ class Model:
         de una vez en memoria para acceso rápido durante la simulación.
         
         Funcionalidades:
-        - Lee archivo CSV con columna 'number'
+        - Lee archivo CSV con columna 'Ri' (números pseudoaleatorios)
         - Muestra progreso cada 250,000 números
         - Calcula estadísticas de carga (tiempo, velocidad)
         - Maneja errores de archivo no encontrado o formato incorrecto
         
         Raises:
             FileNotFoundError: Si el archivo CSV no existe
-            KeyError: Si el CSV no tiene la columna 'number'
+            KeyError: Si el CSV no tiene la columna 'Ri'
             Exception: Para otros errores de lectura
         """
         print("📁 Cargando números desde CSV...")
@@ -75,9 +75,17 @@ class Model:
             with open(self.csv_file, 'r', encoding='utf-8') as file:
                 csv_reader = csv.DictReader(file)
                 
-                # Leer todos los números del CSV
+                # Verificar que las columnas esperadas existen
+                expected_columns = ['i', 'Xi', 'Ri']
+                if not all(col in csv_reader.fieldnames for col in expected_columns):
+                    print(f"❌ ERROR: El CSV no tiene las columnas esperadas")
+                    print(f"   Columnas encontradas: {list(csv_reader.fieldnames)}")
+                    print(f"   Columnas esperadas: {expected_columns}")
+                    raise KeyError(f"Faltan columnas requeridas en el CSV")
+                
+                # Leer todos los números del CSV usando la columna 'Ri'
                 for row_count, row in enumerate(csv_reader, 1):
-                    number = float(row['number'])    # Convierte a float
+                    number = float(row['Ri'])        # Usar columna 'Ri' en lugar de 'number'
                     self.numbers.append(number)      # Almacena en memoria
                     
                     # Mostrar progreso cada 250,000 números para archivos grandes
@@ -93,6 +101,7 @@ class Model:
                 print(f"   📈 Total: {self.total_numbers_loaded:,} números")
                 print(f"   ⏱️  Tiempo: {load_time:.2f} segundos")
                 print(f"   🚀 Velocidad: {self.total_numbers_loaded/load_time:,.0f} números/seg")
+                print(f"   📋 Formato CSV detectado: i, Xi, Ri")
                 
         except FileNotFoundError:
             print(f"❌ ERROR: No se encontró el archivo '{self.csv_file}'")
@@ -101,10 +110,16 @@ class Model:
             print("   2. Asegúrate de que el nombre del archivo sea correcto")
             print("   3. Verifica que esté en la carpeta correcta")
             raise
-        except KeyError:
-            print(f"❌ ERROR: El CSV no tiene la columna 'number' esperada")
+        except KeyError as e:
+            print(f"❌ ERROR: Problema con las columnas del CSV")
             print("\n💡 SOLUCIÓN:")
-            print("   Asegúrate de que el CSV tenga las columnas: index, number")
+            print("   Asegúrate de que el CSV tenga las columnas: i, Xi, Ri")
+            print("   Donde 'Ri' contiene los números pseudoaleatorios entre 0 y 1")
+            raise
+        except ValueError as e:
+            print(f"❌ ERROR: Valor inválido en la columna 'Ri': {e}")
+            print("\n💡 SOLUCIÓN:")
+            print("   Verifica que todos los valores en la columna 'Ri' sean números válidos")
             raise
         except Exception as e:
             print(f"❌ ERROR al cargar CSV: {e}")
