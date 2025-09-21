@@ -12,8 +12,6 @@ class Model:
     """
     Clase principal del modelo de simulación de juegos.
     
-    Este modelo simula juegos entre dos equipos, donde cada juego consiste en múltiples
-    rondas y los jugadores realizan disparos basados en su resistencia y suerte.
     
     Características principales:
     - Consume números pseudoaleatorios exclusivamente desde un archivo CSV
