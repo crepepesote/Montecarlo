@@ -4,7 +4,7 @@ import csv
 from data_models import *
 
 # Configuración global de la simulación
-GAMES_AMOUNT = 10000        # Cantidad total de juegos a simular
+GAMES_AMOUNT = 20000        # Cantidad total de juegos a simular
 PLAYERS_PER_TEAM = 5        # Número de jugadores por equipo
 ROUNDS_PER_GAME = 10        # Número de rondas por cada juego
 
