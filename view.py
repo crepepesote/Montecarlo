@@ -6,50 +6,43 @@ import threading
 import matplotlib.pyplot as plt
 
 class LoadingBar:
-    """Barra de progreso centrada y más grande. Maneja estilos de ttk de forma robusta."""
+    """Barra de progreso centrada para mostrar el avance de la simulación."""
+    
     def __init__(self, root: tk.Tk):
         self.root = root
 
-        # Contenedor (ocupamos toda la zona para poder centrar con place)
+        # Contenedor principal que ocupa toda la ventana
         self.container = tk.Frame(root, bg=root.cget("bg"))
         self.container.pack(fill=tk.BOTH, expand=True)
 
-        # Intentamos crear un estilo "LargeHorizontal.TProgressbar" basado en el layout
-        # del estilo Horizontal.TProgressbar. Hacemos esto de forma robusta para evitar
-        # errores en plataformas/temas donde no exista el layout personalizado.
+        # Configuración robusta de estilo para la barra de progreso
         try:
             style = ttk.Style()
-
-            # obtenemos el layout base (esto no lanza si el estilo existe)
             base_layout = style.layout('Horizontal.TProgressbar')
-
-            # clonamos el layout para el nuevo estilo y configuramos grosor
             style.layout('LargeHorizontal.TProgressbar', base_layout)
             style.configure('LargeHorizontal.TProgressbar', thickness=14)
             pb_style = 'LargeHorizontal.TProgressbar'
         except Exception:
-            # fallback: intentamos simplemente configurar el estilo horizontal existente
+            # Fallback: usar estilo horizontal estándar
             try:
                 style = ttk.Style()
                 style.configure('Horizontal.TProgressbar', thickness=14)
                 pb_style = 'Horizontal.TProgressbar'
             except Exception:
-                # último recurso: usar el estilo por defecto
+                # Último recurso: estilo por defecto
                 pb_style = 'TProgressbar'
 
-        # Barra de progreso horizontal más ancha
-        # la colocamos dentro de un frame pequeño que centraremos con place
+        # Frame interno centrado para la barra de progreso
         self.inner = tk.Frame(self.container, bg=self.container.cget("bg"))
-        # Usamos place para centrar exactamente
         self.inner.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Progressbar: longitud mayor (600)
+        # Barra de progreso con longitud aumentada para mejor visibilidad
         self.progress = ttk.Progressbar(self.inner, orient="horizontal",
                                         mode="indeterminate", length=600,
                                         style=pb_style)
         self.progress.pack(pady=6)
 
-        # indicador numérico pequeño (opcional) - vacío por defecto
+        # Etiqueta para mostrar porcentaje de progreso
         self.info = tk.Label(self.inner, text="", font=("Arial", 10), bg=self.container.cget("bg"))
         self.info.pack()
 
@@ -57,14 +50,16 @@ class LoadingBar:
         self._value = 0
 
     def start_indeterminate(self):
+        """Inicia la barra en modo indeterminado (animación continua)."""
         try:
             self.progress.config(mode="indeterminate")
-            self.progress.start(10)  # 10 ms para animación suave
+            self.progress.start(10)
             self._determinate = False
         except Exception:
             pass
 
     def start_determinate(self, maximum=100):
+        """Cambia a modo determinado con valor máximo específico."""
         try:
             self.progress.stop()
             self.progress.config(mode="determinate", maximum=maximum, value=0)
@@ -74,10 +69,9 @@ class LoadingBar:
             pass
 
     def set_progress(self, pct: int):
-        """Permite al presenter actualizar progreso (0-100). Cambia a determinate si es necesario."""
+        """Actualiza el progreso y cambia a modo determinado si es necesario."""
         pct = max(0, min(100, int(pct)))
         if not self._determinate:
-            # pasar a modo determinate la primera vez que se recibe un valor concreto
             self.start_determinate(100)
         try:
             self.progress['value'] = pct
@@ -88,6 +82,7 @@ class LoadingBar:
             pass
 
     def stop(self):
+        """Detiene la barra y muestra estado completado."""
         try:
             if not self._determinate:
                 self.progress.stop()
@@ -97,6 +92,7 @@ class LoadingBar:
             pass
 
     def destroy(self):
+        """Destruye el contenedor de la barra de progreso."""
         try:
             self.container.destroy()
         except Exception:
@@ -104,35 +100,44 @@ class LoadingBar:
 
 
 class View(tk.Tk):
+    """Vista principal de la aplicación - Interfaz gráfica del simulador de arquería."""
+    
     def __init__(self):
         super().__init__()
         self.presenter = None
         self.load_frame = None
         self.loading_bar = None
 
-        # --- QUITAR BARRA NATIVA ---
-        # Esto elimina la barra de título con botones nativos.
+        # Configuración de ventana sin barra de título nativa
         self.overrideredirect(True)
 
+        # Configuración inicial de la ventana
         self.title("Simulador de Juegos de Arquería")
         self.geometry("1000x700")
         self.configure(bg="#f0f0f0")
         self.update_idletasks()
-        self.geometry("+{}+{}".format(int(self.winfo_screenwidth()/2 - self.winfo_width()/2), int(self.winfo_screenheight()/2 - self.winfo_height()/2)))
+        
+        # Centrar ventana en pantalla
+        self.geometry("+{}+{}".format(
+            int(self.winfo_screenwidth()/2 - self.winfo_width()/2), 
+            int(self.winfo_screenheight()/2 - self.winfo_height()/2)
+        ))
 
-        # MAIN FRAME
+        # Frame principal de la aplicación
         self.main_frame = tk.Frame(self, bg=self.cget("bg"))
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Permitir mover la ventana arrastrando el main_frame (porque perdimos la barra)
+        # Configuración para arrastrar ventana (compensar falta de barra de título)
         self._drag_offset_x = 0
         self._drag_offset_y = 0
+        
         def _start_move(event):
             try:
                 self._drag_offset_x = event.x_root - self.winfo_x()
                 self._drag_offset_y = event.y_root - self.winfo_y()
             except Exception:
                 pass
+                
         def _do_move(event):
             try:
                 new_x = event.x_root - self._drag_offset_x
@@ -140,37 +145,37 @@ class View(tk.Tk):
                 self.geometry(f"+{new_x}+{new_y}")
             except Exception:
                 pass
-        # enlazamos al main_frame para arrastrar desde cualquier sitio dentro de la UI principal
+        
         self.main_frame.bind("<ButtonPress-1>", _start_move)
         self.main_frame.bind("<B1-Motion>", _do_move)
 
-        # Atajo para cerrar la ventana (Escape)
+        # Atajo de teclado para cerrar aplicación
         self.bind("<Escape>", lambda e: self.destroy())
 
-        # Título (arriba)
+        # Título principal de la aplicación
         self.label = tk.Label(self.main_frame, text="Simulador de juegos de arqueria", bg=self.cget("bg"))
         self.label.config(font=("Arial", 20))
         self.label.pack(pady=(40, 20))
 
-        # Contenedor para centrar el botón (lo centra horizontal y verticalmente dentro de main_frame)
+        # Contenedor para centrar el botón de inicio
         button_container = tk.Frame(self.main_frame, bg=self.cget("bg"))
         button_container.pack(expand=True)
 
         def on_start():
+            """Maneja el inicio de la simulación en un hilo separado."""
             self.show_load_frame()
-            # Lanza start_simulation en hilo para no bloquear UI.
             threading.Thread(target=self.presenter.start_simulation, daemon=True).start()
 
-        # Botón grande, coloreado y centrado
+        # Botón principal para iniciar simulación
         self.start_btn = tk.Button(
             button_container,
             text="Iniciar Simulación",
             command=on_start,
             font=("Arial", 16, "bold"),
-            width=24,           # ancho en caracteres
-            height=2,           # alto en líneas
-            bg="#2ecc71",       # color verde (puedes cambiar)
-            fg="white",         # texto blanco
+            width=24,
+            height=2,
+            bg="#2ecc71",
+            fg="white",
             activebackground="#27ae60",
             activeforeground="white",
             bd=0,
@@ -179,63 +184,65 @@ class View(tk.Tk):
         )
         self.start_btn.pack(pady=20)
 
-        # Efecto hover (cambia ligeramente el color al pasar el ratón)
+        # Efectos hover para el botón
         def _on_enter(e):
             try:
                 e.widget.config(bg="#27ae60")
             except Exception:
                 pass
+                
         def _on_leave(e):
             try:
                 e.widget.config(bg="#2ecc71")
             except Exception:
                 pass
+                
         self.start_btn.bind("<Enter>", _on_enter)
         self.start_btn.bind("<Leave>", _on_leave)
 
     def show_load_frame(self):
+        """Muestra la pantalla de carga ocultando el frame principal."""
         self.main_frame.pack_forget()
         self.create_load_frame()
         self.load_frame.pack(fill=tk.BOTH, expand=True)
 
     def create_load_frame(self):
-        # reemplazamos LoadingCircle por LoadingBar horizontal centrada y más ancha
+        """Crea y configura el frame de carga con barra de progreso."""
         self.load_frame = tk.Frame(self, bg=self.cget("bg"))
         self.load_frame.pack(fill=tk.BOTH, expand=True)
         self.loading_bar = LoadingBar(self.load_frame)
-        # por defecto arrancamos en modo indeterminate (animada)
         self.loading_bar.start_indeterminate()
-        # no mostramos texto "Cargando simulacion"
 
     def set_presenter(self, presenter):
+        """Establece la referencia al presenter para comunicación MVP."""
         self.presenter = presenter
 
-    # Método opcional para que el presenter actualice progreso: view.set_loading_progress(pct)
     def set_loading_progress(self, pct: int):
+        """Actualiza el progreso de carga desde el presenter."""
         if self.loading_bar:
-            # aseguramos ejecución en hilo UI
             try:
                 self.after(0, lambda: self.loading_bar.set_progress(pct))
             except Exception:
                 pass
 
-    # Método opcional que el presenter puede llamar cuando termina la simulación
     def simulation_finished(self, results: dict):
-        # detener barra y mostrar resultados
+        """Maneja la finalización de la simulación y muestra resultados."""
+        # Detener barra de progreso
         if self.loading_bar:
             try:
                 self.loading_bar.stop()
             except Exception:
                 pass
-        # mostrar resultados en hilo principal (tu show_results espera un dict llamado results)
+        
+        # Mostrar resultados en el hilo principal de UI
         try:
             self.after(50, lambda: self.show_results(results))
         except Exception:
-            # fallback directo
             self.show_results(results)
 
-    # --- show_results (mantengo tu implementación completa) ---
     def show_results(self, results):
+        """Muestra la pantalla de resultados con toda la información de la simulación."""
+        # Configuración inicial del frame de resultados con scroll
         results_frame = tk.Frame(self)
         canvas = tk.Canvas(results_frame)
         scrollbar = tk.Scrollbar(results_frame, orient=tk.VERTICAL, command=canvas.yview, width=10)
@@ -245,16 +252,17 @@ class View(tk.Tk):
         canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         scrollable_frame_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=self.winfo_width() - 10)
         
-        # Título principal
+        # Título principal de resultados
         tk.Label(scrollable_frame, text="Resultados de la Simulación", font=("Arial", 20, "bold")).pack(pady=15)
         
-        # Métricas básicas
+        # === SECCIÓN: MÉTRICAS BÁSICAS ===
         basic_frame = tk.LabelFrame(scrollable_frame, text="Métricas Básicas", font=("Arial", 14, "bold"))
         basic_frame.pack(fill=tk.X, padx=10, pady=10)
         
         grid_frame = tk.Frame(basic_frame)
         grid_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
+        # Información de métricas básicas en formato grid
         tk.Label(grid_frame, text="Jugador con más suerte por juego:", font=("Arial", 12)).grid(row=0, column=0, sticky="w", padx=(0,10))
         tk.Label(grid_frame, text=f"{results['luckiest_player_per_game']['player'].name} - {results['luckiest_player_per_game']['amount_luck']} veces", 
                  font=("Arial", 12)).grid(row=0, column=1, sticky="w")
@@ -271,31 +279,33 @@ class View(tk.Tk):
         tk.Label(grid_frame, text=f"{results['winner_gender_total']['gender']} - {results['winner_gender_total']['total_rounds_won']} rondas", 
                  font=("Arial", 12)).grid(row=3, column=1, sticky="w")
 
-        # Equipo ganador
+        # === SECCIÓN: EQUIPO GANADOR ===
         team_frame = tk.LabelFrame(scrollable_frame, text="Equipo Ganador", font=("Arial", 14, "bold"))
         team_frame.pack(fill=tk.X, padx=10, pady=10)
         
         tk.Label(team_frame, text=f"Equipo ganador: {results['winner_team_total']['team'].name}", 
                  font=("Arial", 13, "bold")).pack(pady=5)
         
+        # Lista de jugadores del equipo ganador con sus puntos
         for player_points in results['winner_team_total']['player_points']:
             tk.Label(team_frame, text=f"• {player_points['player']} - {player_points['points']} puntos", 
                      font=("Arial", 11)).pack(pady=2)
-        # Distribución de puntajes por equipo
+
+        # === SECCIÓN: DISTRIBUCIÓN DE PUNTAJES POR EQUIPO ===
         distribution_frame = tk.LabelFrame(scrollable_frame, text="Distribución de Puntajes por Equipo", font=("Arial", 14, "bold"))
         distribution_frame.pack(fill=tk.X, padx=10, pady=10)
         
         dist_grid = tk.Frame(distribution_frame)
         dist_grid.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Encabezados
+        # Encabezados de la tabla de distribución
         tk.Label(dist_grid, text="Equipo", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=5, pady=2, sticky="w")
         tk.Label(dist_grid, text="Promedio", font=("Arial", 12, "bold")).grid(row=0, column=1, padx=5, pady=2)
         tk.Label(dist_grid, text="Varianza", font=("Arial", 12, "bold")).grid(row=0, column=2, padx=5, pady=2)
         tk.Label(dist_grid, text="Desv. Estándar", font=("Arial", 12, "bold")).grid(row=0, column=3, padx=5, pady=2)
         tk.Label(dist_grid, text="Ver Dispersión", font=("Arial", 12, "bold")).grid(row=0, column=4, padx=5, pady=2)
         
-        # Team A
+        # Datos del Equipo A
         team_a_data = results['team_score_distribution']['team_a']
         tk.Label(dist_grid, text=team_a_data['name'], font=("Arial", 11)).grid(row=1, column=0, padx=5, pady=2, sticky="w")
         tk.Label(dist_grid, text=f"{team_a_data['average_score']}", font=("Arial", 11)).grid(row=1, column=1, padx=5, pady=2)
@@ -304,7 +314,7 @@ class View(tk.Tk):
         tk.Button(dist_grid, text="Gráfica", font=("Arial", 10), 
                  command=lambda: self.show_dispersion_analysis(team_a_data)).grid(row=1, column=4, padx=5, pady=2)
         
-        # Team B
+        # Datos del Equipo B
         team_b_data = results['team_score_distribution']['team_b']
         tk.Label(dist_grid, text=team_b_data['name'], font=("Arial", 11)).grid(row=2, column=0, padx=5, pady=2, sticky="w")
         tk.Label(dist_grid, text=f"{team_b_data['average_score']}", font=("Arial", 11)).grid(row=2, column=1, padx=5, pady=2)
@@ -317,21 +327,21 @@ class View(tk.Tk):
         tk.Button(distribution_frame, text="Ver Comparación de Dispersión de Ambos Equipos", font=("Arial", 12), 
                  command=lambda: self.show_combined_dispersion_analysis(results['team_score_distribution'])).pack(pady=10)
 
-        # Análisis de lanzamientos especiales
+        # === SECCIÓN: ANÁLISIS DE LANZAMIENTOS ESPECIALES ===
         special_frame = tk.LabelFrame(scrollable_frame, text="Análisis de Lanzamientos Especiales", font=("Arial", 14, "bold"))
         special_frame.pack(fill=tk.X, padx=10, pady=10)
         
         special_grid = tk.Frame(special_frame)
         special_grid.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Encabezados
+        # Encabezados para lanzamientos especiales
         tk.Label(special_grid, text="Equipo", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=5, pady=2, sticky="w")
         tk.Label(special_grid, text="Total Especiales", font=("Arial", 12, "bold")).grid(row=0, column=1, padx=5, pady=2)
         tk.Label(special_grid, text="Promedio/Juego", font=("Arial", 12, "bold")).grid(row=0, column=2, padx=5, pady=2)
         tk.Label(special_grid, text="Experiencia Ganada", font=("Arial", 12, "bold")).grid(row=0, column=3, padx=5, pady=2)
         tk.Label(special_grid, text="Factor Correlación", font=("Arial", 12, "bold")).grid(row=0, column=4, padx=5, pady=2)
         
-        # Team A
+        # Datos de lanzamientos especiales para ambos equipos
         special_a = results['special_shots_analysis']['team_a']
         tk.Label(special_grid, text=special_a['name'], font=("Arial", 11)).grid(row=1, column=0, padx=5, pady=2, sticky="w")
         tk.Label(special_grid, text=f"{special_a['total_special_shots']}", font=("Arial", 11)).grid(row=1, column=1, padx=5, pady=2)
@@ -339,7 +349,6 @@ class View(tk.Tk):
         tk.Label(special_grid, text=f"{special_a['experience_gained']}", font=("Arial", 11)).grid(row=1, column=3, padx=5, pady=2)
         tk.Label(special_grid, text=f"{special_a['correlation_factor']}", font=("Arial", 11)).grid(row=1, column=4, padx=5, pady=2)
         
-        # Team B
         special_b = results['special_shots_analysis']['team_b']
         tk.Label(special_grid, text=special_b['name'], font=("Arial", 11)).grid(row=2, column=0, padx=5, pady=2, sticky="w")
         tk.Label(special_grid, text=f"{special_b['total_special_shots']}", font=("Arial", 11)).grid(row=2, column=1, padx=5, pady=2)
@@ -347,7 +356,7 @@ class View(tk.Tk):
         tk.Label(special_grid, text=f"{special_b['experience_gained']}", font=("Arial", 11)).grid(row=2, column=3, padx=5, pady=2)
         tk.Label(special_grid, text=f"{special_b['correlation_factor']}", font=("Arial", 11)).grid(row=2, column=4, padx=5, pady=2)
 
-        # Análisis de rondas empatadas
+        # === SECCIÓN: ANÁLISIS DE RONDAS EMPATADAS ===
         tied_frame = tk.LabelFrame(scrollable_frame, text="Análisis de Rondas Empatadas", font=("Arial", 14, "bold"))
         tied_frame.pack(fill=tk.X, padx=10, pady=10)
         
@@ -355,6 +364,7 @@ class View(tk.Tk):
         tied_info_frame = tk.Frame(tied_frame)
         tied_info_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
+        # Estadísticas de rondas empatadas
         tk.Label(tied_info_frame, text=f"Total de rondas jugadas: {tied_data['total_rounds']}", 
                  font=("Arial", 12)).pack(anchor="w", pady=2)
         tk.Label(tied_info_frame, text=f"Rondas empatadas: {tied_data['tied_rounds_count']} ({tied_data['tied_frequency_percent']}%)", 
@@ -362,13 +372,13 @@ class View(tk.Tk):
         tk.Label(tied_info_frame, text=f"Rondas con ganador: {tied_data['non_tied_rounds']} ({tied_data['non_tied_frequency_percent']}%)", 
                  font=("Arial", 12)).pack(anchor="w", pady=2)
 
-        # Métricas de eficiencia y tiempo
+        # === SECCIÓN: MÉTRICAS DE EFICIENCIA Y RENDIMIENTO ===
         efficiency_frame = tk.LabelFrame(scrollable_frame, text="Tiempo Total de Simulación y Eficiencia del Sistema", font=("Arial", 14, "bold"))
         efficiency_frame.pack(fill=tk.X, padx=10, pady=10)
         
         efficiency_data = results['efficiency_metrics']
         
-        # Información de tiempo
+        # Subsección: Tiempos de ejecución
         timing_frame = tk.LabelFrame(efficiency_frame, text="Tiempos de Ejecución", font=("Arial", 12, "bold"))
         timing_frame.pack(fill=tk.X, padx=5, pady=5)
         
@@ -384,14 +394,14 @@ class View(tk.Tk):
         tk.Label(timing_grid, text=f"• Análisis de resultados: {efficiency_data['timing']['analysis_time_seconds']}s ({efficiency_data['time_distribution']['analysis_percentage']}%)", 
                  font=("Arial", 11)).pack(anchor="w", pady=1)
         
-        # Velocidades de procesamiento
+        # Subsección: Velocidades de procesamiento
         performance_frame = tk.LabelFrame(efficiency_frame, text="Velocidades de Procesamiento", font=("Arial", 12, "bold"))
         performance_frame.pack(fill=tk.X, padx=5, pady=5)
         
         perf_grid = tk.Frame(performance_frame)
         perf_grid.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Primera columna
+        # División en dos columnas para mejor organización visual
         perf_left = tk.Frame(perf_grid)
         perf_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
@@ -400,7 +410,6 @@ class View(tk.Tk):
         tk.Label(perf_left, text=f"Rondas por segundo: {efficiency_data['processing_rates']['rounds_per_second']}", 
                  font=("Arial", 11)).pack(anchor="w", pady=1)
         
-        # Segunda columna
         perf_right = tk.Frame(perf_grid)
         perf_right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
@@ -409,14 +418,14 @@ class View(tk.Tk):
         tk.Label(perf_right, text=f"Cálculos de suerte/seg: {efficiency_data['processing_rates']['luck_calculations_per_second']}", 
                  font=("Arial", 11)).pack(anchor="w", pady=1)
         
-        # Volumen de datos procesados
+        # Subsección: Volumen de datos procesados
         data_frame = tk.LabelFrame(efficiency_frame, text="Volumen de Datos Procesados", font=("Arial", 12, "bold"))
         data_frame.pack(fill=tk.X, padx=5, pady=5)
         
         data_grid = tk.Frame(data_frame)
         data_grid.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Primera columna
+        # División en dos columnas
         data_left = tk.Frame(data_grid)
         data_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
@@ -427,7 +436,6 @@ class View(tk.Tk):
         tk.Label(data_left, text=f"Total de disparos: {efficiency_data['data_volume']['total_shots']:,}", 
                  font=("Arial", 11)).pack(anchor="w", pady=1)
         
-        # Segunda columna
         data_right = tk.Frame(data_grid)
         data_right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
@@ -438,7 +446,7 @@ class View(tk.Tk):
         tk.Label(data_right, text=f"Cálculos de suerte: {efficiency_data['data_volume']['total_luck_calculations']:,}", 
                  font=("Arial", 11)).pack(anchor="w", pady=1)
         
-        # Indicadores de rendimiento
+        # Subsección: Indicadores de rendimiento del sistema
         system_frame = tk.LabelFrame(efficiency_frame, text="Indicadores de Rendimiento del Sistema", font=("Arial", 12, "bold"))
         system_frame.pack(fill=tk.X, padx=5, pady=5)
         
@@ -452,12 +460,13 @@ class View(tk.Tk):
         tk.Label(system_grid, text=f"Intensidad de procesamiento: {efficiency_data['system_performance']['processing_intensity']}", 
                  font=("Arial", 11)).pack(anchor="w", pady=1)
 
-        # Gráficas de jugadores
+        # === SECCIÓN: GRÁFICAS POR JUGADOR ===
         graphics_frame = tk.LabelFrame(scrollable_frame, text="Gráficas de Puntos vs Juegos por Jugador", font=("Arial", 14, "bold"))
         graphics_frame.pack(fill=tk.X, padx=10, pady=10)
         
         tk.Label(graphics_frame, text="Haz clic en un jugador para ver su gráfica:", font=("Arial", 12)).pack(pady=5)
         
+        # Grid de botones para cada jugador (máximo 5 columnas)
         grid2_frame = tk.Frame(graphics_frame)
         grid2_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
@@ -467,10 +476,11 @@ class View(tk.Tk):
             tk.Button(grid2_frame, text=f"{player_vs_game['player'].name}", 
                 command=lambda data=data, name=player_vs_game['player'].name: self.show_graphics(data, name)).grid(row=row, column=column, padx=2, pady=2)
             column += 1
-            if column == 5:
+            if column == 5:  # Máximo 5 columnas por fila
                 row += 1
                 column = 0
 
+        # Configuración del scroll para el contenido dinámico
         def on_configure(_):
             canvas.configure(scrollregion=canvas.bbox("all"))
             canvas.itemconfig(scrollable_frame_id, width=self.winfo_width() - 10)
@@ -478,12 +488,14 @@ class View(tk.Tk):
         scrollable_frame.bind("<Configure>", on_configure)
         canvas.bind("<Configure>", on_configure)
         
+        # Botón para volver al menú principal
         def on_back():
             self.reset_view(results_frame)
             results_frame.destroy()
         
         tk.Button(results_frame, text="Volver", command=on_back).pack(pady=10)
-        # ocultar y destruir load_frame si existe
+        
+        # Limpiar frame de carga si existe
         try:
             if self.load_frame:
                 self.load_frame.pack_forget()
@@ -496,10 +508,12 @@ class View(tk.Tk):
         results_frame.pack(fill=tk.BOTH, expand=True)
 
     def reset_view(self, frame: tk.Frame):
+        """Oculta el frame actual y restaura la vista principal."""
         frame.pack_forget()
         self.main_frame.pack(fill=tk.BOTH, expand=True)
     
     def show_graphics(self, data, player_name):
+        """Muestra gráfica de puntos vs juegos para un jugador específico."""
         plt.figure(figsize=(12, 8))
         games = list(range(1, len(data['points']) + 1))
         plt.plot(games, data['points'], color='blue', linewidth=2, alpha=0.7)
@@ -512,7 +526,7 @@ class View(tk.Tk):
         plt.show()
 
     def show_dispersion_analysis(self, team_data):
-        """Muestra análisis de dispersión para un equipo específico"""
+        """Muestra análisis de dispersión detallado para un equipo específico."""
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
         
         scores = team_data['scores']
@@ -520,7 +534,7 @@ class View(tk.Tk):
         avg = team_data['average_score']
         std = team_data['std_deviation']
         
-        # 1. Histograma de distribución
+        # Gráfica 1: Histograma de distribución de puntajes
         ax1.hist(scores, bins=30, alpha=0.7, color='skyblue', edgecolor='black')
         ax1.axvline(avg, color='red', linestyle='--', linewidth=2, label=f'Promedio: {avg}')
         ax1.axvline(avg + std, color='orange', linestyle='--', alpha=0.7, label=f'+1 Desv: {avg + std:.2f}')
@@ -531,7 +545,7 @@ class View(tk.Tk):
         ax1.legend()
         ax1.grid(True, alpha=0.3)
         
-        # 2. Box plot
+        # Gráfica 2: Box plot para visualizar quartiles y outliers
         ax2.boxplot(scores, patch_artist=True, 
                    boxprops=dict(facecolor='lightblue', alpha=0.7),
                    medianprops=dict(color='red', linewidth=2))
@@ -539,7 +553,7 @@ class View(tk.Tk):
         ax2.set_title(f'Box Plot - {team_name}')
         ax2.grid(True, alpha=0.3)
         
-        # 3. Serie temporal de puntajes
+        # Gráfica 3: Serie temporal de puntajes a lo largo de los juegos
         games = list(range(1, len(scores) + 1))
         ax3.plot(games, scores, color='blue', alpha=0.6, linewidth=1)
         ax3.axhline(avg, color='red', linestyle='--', label=f'Promedio: {avg}')
@@ -551,18 +565,17 @@ class View(tk.Tk):
         ax3.legend()
         ax3.grid(True, alpha=0.3)
         
-        # 4. Q-Q Plot (aproximación simple)
+        # Gráfica 4: Q-Q Plot para evaluar normalidad de los datos
         sorted_scores = sorted(scores)
         n = len(sorted_scores)
         theoretical_quantiles = [(i - 0.5) / n for i in range(1, n + 1)]
         
-        # Aproximación a cuantiles normales
         import math
         normal_quantiles = [avg + std * math.sqrt(2) * self.inverse_erf(2 * q - 1) for q in theoretical_quantiles]
         
         ax4.scatter(normal_quantiles, sorted_scores, alpha=0.6, color='green')
         
-        # Línea de referencia
+        # Línea de referencia para distribución normal perfecta
         min_val = min(min(normal_quantiles), min(sorted_scores))
         max_val = max(max(normal_quantiles), max(sorted_scores))
         ax4.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.7)
@@ -577,7 +590,7 @@ class View(tk.Tk):
         plt.show()
 
     def show_combined_dispersion_analysis(self, distribution_data):
-        """Muestra análisis comparativo de dispersión entre ambos equipos"""
+        """Muestra análisis comparativo de dispersión entre ambos equipos."""
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
         
         team_a_data = distribution_data['team_a']
@@ -586,7 +599,7 @@ class View(tk.Tk):
         scores_a = team_a_data['scores']
         scores_b = team_b_data['scores']
         
-        # 1. Histogramas superpuestos
+        # Gráfica 1: Histogramas superpuestos para comparación directa
         ax1.hist(scores_a, bins=30, alpha=0.6, color='blue', label='Team A', density=True)
         ax1.hist(scores_b, bins=30, alpha=0.6, color='red', label='Team B', density=True)
         ax1.axvline(team_a_data['average_score'], color='blue', linestyle='--', linewidth=2)
@@ -597,7 +610,7 @@ class View(tk.Tk):
         ax1.legend()
         ax1.grid(True, alpha=0.3)
         
-        # 2. Box plots comparativos
+        # Gráfica 2: Box plots lado a lado
         box_data = [scores_a, scores_b]
         box_labels = ['Team A', 'Team B']
         bp = ax2.boxplot(box_data, labels=box_labels, patch_artist=True)
@@ -607,8 +620,8 @@ class View(tk.Tk):
         ax2.set_title('Box Plot Comparativo')
         ax2.grid(True, alpha=0.3)
         
-        # 3. Serie temporal comparativa (muestra)
-        sample_size = min(100, len(scores_a))  # Muestra para mejor visualización
+        # Gráfica 3: Series temporales comparativas (muestra para mejor visualización)
+        sample_size = min(100, len(scores_a))
         games_sample = list(range(1, sample_size + 1))
         ax3.plot(games_sample, scores_a[:sample_size], color='blue', alpha=0.7, label='Team A', linewidth=1)
         ax3.plot(games_sample, scores_b[:sample_size], color='red', alpha=0.7, label='Team B', linewidth=1)
@@ -620,7 +633,7 @@ class View(tk.Tk):
         ax3.legend()
         ax3.grid(True, alpha=0.3)
         
-        # 4. Comparación de estadísticas
+        # Gráfica 4: Comparación de estadísticas en formato de barras
         categories = ['Promedio', 'Desv. Estándar', 'Varianza']
         team_a_stats = [team_a_data['average_score'], team_a_data['std_deviation'], team_a_data['variance']]
         team_b_stats = [team_b_data['average_score'], team_b_data['std_deviation'], team_b_data['variance']]
@@ -639,7 +652,7 @@ class View(tk.Tk):
         ax4.legend()
         ax4.grid(True, alpha=0.3)
         
-        # Añadir valores sobre las barras
+        # Añadir valores numéricos sobre las barras para mejor legibilidad
         for i, (a_stat, b_stat) in enumerate(zip(team_a_stats, team_b_stats)):
             ax4.text(i - width/2, a_stat + max(team_a_stats + team_b_stats) * 0.01, 
                     f'{a_stat:.2f}', ha='center', va='bottom', fontsize=9)
@@ -652,22 +665,23 @@ class View(tk.Tk):
         plt.show()
 
     def inverse_erf(self, x):
-        """Aproximación simple de la función inversa del error para Q-Q plot"""
+        """Aproximación de la función inversa del error para Q-Q plot."""
         import math
-        # Aproximación de Beasley-Springer-Moro
+        
         if abs(x) >= 1:
             return 0
         
-        # Aproximación simple para demostración
         if x == 0:
             return 0
         
-        # Usamos una aproximación básica
+        # Aproximación básica usando método de Beasley-Springer-Moro
         a = 0.147
         b = 2 / (math.pi * a) + math.log(1 - x*x) / 2
         result = math.copysign(math.sqrt(math.sqrt(b*b - math.log(1 - x*x) / a) - b), x)
         return result
 
+
+# Punto de entrada de la aplicación
 if __name__ == "__main__":
     model = Model()
     view = View()
